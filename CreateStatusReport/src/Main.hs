@@ -20,6 +20,7 @@ module Main (
 import Data.Time
 import Data.Time.Calendar.WeekDate
 import System.IO
+import System.Directory
 import System.Environment
 import Data.Char
 import Data.List
@@ -28,7 +29,8 @@ import Data.List.Split
 -- Constants
 --notesDir = "H:/Notes/"
 --notesDir = "F:/Haskell/"
-username = "\"Gliddon, Richard\""
+username = "Gliddon, Richard"
+team = "Ajilon Online Services"
 notesDir = ""
 destDir = ""
 destPrefix = "StatusReport_"
@@ -129,18 +131,31 @@ makeMultiWordProj ws = (proj,dropWhile (==' ') desc')
           (proj,desc) = span (/='"') spanning
           desc' = dropWhile (=='"') desc
 
+-- Returns the type of task and the task code for the given task
+-- Param 1: The name of the project or task
+taskDescriptors :: String -> (String, String)
+taskDescriptors proj
+    | length proj < 10 = ("Project","Some_Code")
+    | code == "INC" = ("Incident","INC_Code")
+    | code == "REQ" = ("Request","REQ_Code")
+    | code == "CHG" = ("Change","CHG_Code")
+    | code == "PRB" = ("Problem","PRB_Code")
+    | otherwise = ("Project","Some_Code")
+    where code = map toUpper $ take 3 proj
+
 -- In the format yyyy-mm-dd,"Gliddon, Richard",Project,"Description",Hours
 formatTimeSheetLine :: String -> Day -> String
 formatTimeSheetLine [] _ = []
 formatTimeSheetLine l d
     | isTimeSheetLine l = formatted
     | otherwise = []
-    where formatted = show d ++ "," ++ username ++ "," ++ proj ++ ",\"" ++ desc ++ "\"," ++ hours
+    where formatted = show d ++ ",\"" ++ username ++ "\"," ++ team ++ "," ++ proj ++ "," ++ taskType ++ "," ++ taskCode ++ ",\"" ++ desc ++ "\"," ++ hours
           proj = if p == '"' then multiWordProj else proj'
           desc = if p == '"' then desc' else unwords ws
           hours = take (length numhr - 2) numhr
           (numhr:proj'@(p:_):ws) = words l
           (multiWordProj,desc') = makeMultiWordProj (proj':ws)
+          (taskType,taskCode) = taskDescriptors proj
 
 -- Converts timesheet lines into csv format status report entries
 -- Param 1: Notes contents;  Param 2: log entry date;  Param 3: range start date;  Param 4: range end date
@@ -197,9 +212,13 @@ createReportFromPath :: String -> [(Day, Day)] -> IO [String]
 createReportFromPath _ [] = return []
 createReportFromPath path ((s,e):ds) = do
     let filename = notesFileOfMonth path s
-    notes <- readFile filename
-    restOfReport <- createReportFromPath path ds
-    return $ (dropToDayInRange_parse (lines notes) s e) ++ restOfReport
+    doesExist <- doesFileExist filename
+    if doesExist
+        then do
+            notes <- readFile filename
+            restOfReport <- createReportFromPath path ds
+            return $ (dropToDayInRange_parse (lines notes) s e) ++ restOfReport
+        else return []
 
 -- Converts the given string to a day and returns it.  If String is not in the expected format
 -- (dd-mm-yyyy) then the second param is returned.
