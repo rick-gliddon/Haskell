@@ -1,0 +1,10 @@
+Version of workspace file format:
+               1
+Time of storage:
+               "Mon Apr 21 13:32:44 W. Australia Standard Time 2014"
+Name of the workspace:
+               "HaskellWorkspace"
+File paths of contained packages:
+               ["CreateStatusReport\\CreateStatusReport.cabal"]
+Maybe file path of an active package:
+               Just "CreateStatusReport\\CreateStatusReport.cabal"
