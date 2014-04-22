@@ -38,6 +38,8 @@ weekDays = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]
 months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
 reportDayNum = dayIndex + 1
     where (Just dayIndex) = elemIndex "Wed" weekDays
+projectContract = "50408/2"
+supportContract = "50408/1"
 dayFormatError = "Date parameter must have form dd-mm-yyyy"
 
 daysToReportDay :: Day -> Int
@@ -135,12 +137,12 @@ makeMultiWordProj ws = (proj,dropWhile (==' ') desc')
 -- Param 1: The name of the project or task
 taskDescriptors :: String -> (String, String)
 taskDescriptors proj
-    | length proj < 10 = ("Project","Some_Code")
-    | code == "INC" = ("Incident","INC_Code")
-    | code == "REQ" = ("Request","REQ_Code")
-    | code == "CHG" = ("Change","CHG_Code")
-    | code == "PRB" = ("Problem","PRB_Code")
-    | otherwise = ("Project","Some_Code")
+    | length proj < 10 = ("Project",projectContract)
+    | code == "INC" = ("Incident",supportContract)
+    | code == "REQ" = ("Request",supportContract)
+    | code == "CHG" = ("Change",supportContract)
+    | code == "PRB" = ("Problem",supportContract)
+    | otherwise = ("Project",projectContract)
     where code = map toUpper $ take 3 proj
 
 -- In the format yyyy-mm-dd,"Gliddon, Richard",Project,"Description",Hours
@@ -149,13 +151,13 @@ formatTimeSheetLine [] _ = []
 formatTimeSheetLine l d
     | isTimeSheetLine l = formatted
     | otherwise = []
-    where formatted = show d ++ ",\"" ++ username ++ "\"," ++ team ++ "," ++ proj ++ "," ++ taskType ++ "," ++ taskCode ++ ",\"" ++ desc ++ "\"," ++ hours
+    where formatted = show d ++ ",\"" ++ username ++ "\"," ++ team ++ "," ++ contract ++ "," ++ proj ++ "," ++ taskType ++ ",\"" ++ desc ++ "\"," ++ hours
           proj = if p == '"' then multiWordProj else proj'
           desc = if p == '"' then desc' else unwords ws
           hours = take (length numhr - 2) numhr
           (numhr:proj'@(p:_):ws) = words l
           (multiWordProj,desc') = makeMultiWordProj (proj':ws)
-          (taskType,taskCode) = taskDescriptors proj
+          (taskType,contract) = taskDescriptors proj
 
 -- Converts timesheet lines into csv format status report entries
 -- Param 1: Notes contents;  Param 2: log entry date;  Param 3: range start date;  Param 4: range end date
