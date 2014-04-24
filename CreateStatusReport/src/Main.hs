@@ -22,6 +22,7 @@ import Data.Time.Calendar.WeekDate
 import System.IO
 import System.Directory
 import System.Environment
+import System.Process
 import Data.Char
 import Data.List
 import Data.List.Split
@@ -33,24 +34,56 @@ username = "Gliddon, Richard"
 team = "Ajilon Online Services"
 notesDir = ""
 destDir = ""
+excelPath = "C:/Program Files (x86)/Microsoft Office/Office12/EXCEL.EXE"
 destPrefix = "StatusReport_"
 weekDays = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]
 months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
 reportDayNum = dayIndex + 1
     where (Just dayIndex) = elemIndex "Wed" weekDays
+timesheetDayNum = dayIndex + 1
+    where (Just dayIndex) = elemIndex "Fri" weekDays
 projectContract = "50408/2"
 supportContract = "50408/1"
-dayFormatError = "Date parameter must have form dd-mm-yyyy"
+argumentError =
+    "Error in arguments list"
+    ++ "\n"
+    ++ "\nSyntax"
+    ++ "\n  CreateStatusReport [DATE] [(atReportDay|atTimesheetDay)]"
+    ++ "\n"
+    ++ "\nKey"
+    ++ "\n  DATE         Runs the report as if it were run at this date."
+    ++ "\n               In format \"dd-mm-yyyy\""
+    ++ "\n"
+    ++ "\n  atReportDay     Creates the report using the last report day as the"
+    ++ "\n                  end date.  Uses today's date (or DATE when specified)"
+    ++ "\n                  as the end date if it is a report day."
+    ++ "\n"
+    ++ "\n  atTimesheetDay  Creates the report using the closest timesheet day as"
+    ++ "\n                  the end date.  Uses today's date (or DATE when"
+    ++ "\n                  specified) as the end date if it is a timesheet day."
+    ++ "\n"
+    ++ "\n  If \"toReportDay\" or \"toTimesheetDay\" are not specified then today's"
+    ++ "\n  date is used as the end date.  If DATE is given then it is used as the "
+    ++ "\n  end date."
+
+daysToDayNum :: Int -> Day -> Int
+daysToDayNum dayNum theDay
+    | weekDayNum < dayNum = lastDayNum - weekDayNum
+    | otherwise = dayNum - weekDayNum
+    where (_,_,weekDayNum) = toWeekDate theDay
+          lastDayNum = dayNum - 7
 
 daysToReportDay :: Day -> Int
-daysToReportDay x
-    | weekDayNum < reportDayNum = lastReportDayNum - weekDayNum
-    | otherwise = reportDayNum - weekDayNum
-    where (_,_,weekDayNum) = toWeekDate x
-          lastReportDayNum = reportDayNum - 7
+daysToReportDay theDay = daysToDayNum reportDayNum theDay
+
+daysToTimesheetDay :: Day -> Int
+daysToTimesheetDay theDay = daysToDayNum timesheetDayNum theDay
 
 reportDayOfWeek :: Day -> Day
 reportDayOfWeek x = addDays (toInteger $ daysToReportDay x) x
+
+timesheetDayOfWeek :: Day -> Day
+timesheetDayOfWeek x = addDays (toInteger $ daysToTimesheetDay x) x
 
 padShow :: Int -> String
 padShow x
@@ -63,7 +96,6 @@ padShow x
 notesFileOfMonth :: String -> Day -> FilePath
 notesFileOfMonth path x = path ++ (show yyyy) ++ (padShow mm) ++ ".txt"
     where (yyyy,mm,_) = toGregorian x
---    where (yyyy,mm,_) = toGregorian $ reportDayOfWeek x
 
 isDay :: String -> Bool
 isDay [] = False
@@ -222,38 +254,46 @@ createReportFromPath path ((s,e):ds) = do
             return $ (dropToDayInRange_parse (lines notes) s e) ++ restOfReport
         else return []
 
--- Converts the given string to a day and returns it.  If String is not in the expected format
--- (dd-mm-yyyy) then the second param is returned.
-getDay :: String -> Day -> Day
-getDay [] d = d
-getDay dayStr d
-    | length dayStr /= 10 = error dayFormatError
-    | length ddmmyyyy /= 3 = error dayFormatError
-    | length dd /= 2 = error dayFormatError
-    | length mm /= 2 = error dayFormatError
-    | length yyyy /= 4 = error dayFormatError
-    | not (all isDigit dd && all isDigit mm && all isDigit yyyy) = error dayFormatError
+-- Converts the given string to a day and returns it.
+getDay :: String -> Day
+getDay dayStr
+    | length dayStr /= 10 = error argumentError
+    | length ddmmyyyy /= 3 = error argumentError
+    | length dd /= 2 = error argumentError
+    | length mm /= 2 = error argumentError
+    | length yyyy /= 4 = error argumentError
+    | not (all isDigit dd && all isDigit mm && all isDigit yyyy) = error argumentError
     | otherwise = fromGregorian (read yyyy :: Integer) (read mm :: Int) (read dd :: Int)
     where ddmmyyyy = splitOn "-" dayStr
           (dd:mm:yyyy:[]) = ddmmyyyy
 
--- The main program.  Calculates the report's date range launches the data extraction and prints the results
+getEndDay :: UTCTime -> [String] -> Day
+getEndDay utc [] = utctDay utc
+getEndDay utc args
+    | arg1 == "atReportDay" = reportDayOfWeek day
+    | arg1 == "atTimesheetDay" = timesheetDayOfWeek day
+    | length args == 1 = getDay arg1
+    | length args == 2 && arg2 == "atReportDay" = reportDayOfWeek $ getDay arg1
+    | length args == 2 && arg2 == "atTimesheetDay" = timesheetDayOfWeek $ getDay arg1
+    | otherwise = error argumentError
+    where day = utctDay utc
+          (arg1:_) = args
+          (_:arg2:_) = args
+
+
+-- The main program.  Calculates the report's date range launches the data extraction and outputs the results
 createStatusReport :: IO ()
 createStatusReport = do
-    ct <- getCurrentTime
+    today <- getCurrentTime
     args <- getArgs
-    let today = utctDay ct
-        day = if null args then today else getDay (head args) today
-        endDay = reportDayOfWeek day
+    let endDay = getEndDay today args
         startDay = addDays (-6) endDay
         dateRanges = calcDateRanges (startDay, endDay)
     reportLines <- createReportFromPath notesDir dateRanges
     let reportStr = unlines reportLines
         destFilename = destDir ++ destPrefix ++ show endDay ++ ".csv"
-    putStrLn reportStr
     writeFile destFilename reportStr
-    putStrLn $ "\nWrote File, " ++ destFilename
-    _ <- getLine
+    createProcess (proc excelPath [destFilename])
     return ()
 
 exeMain = createStatusReport
@@ -377,8 +417,7 @@ testGetDay = do
     ct <- getCurrentTime
     let today = utctDay ct
     putStrLn "testGetDay"
-    assertIt "Test 1" (getDay "" today) today
-    assertIt "Test 2" (getDay "24-03-2014" today) $ fromGregorian 2014 3 24
+    assertIt "Test 1" (getDay "24-03-2014") $ fromGregorian 2014 3 24
 
 testDropToDayInRange_parse = do
     print $ dropToDayInRange_parse
